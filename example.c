@@ -24,22 +24,40 @@ int main (int argc, char **argv) {
 	if(fbg_init_screen(&s) < 0)
 		return -1;
 
-	int time_start = time (NULL);
+	int t1 = time (NULL);
 
 	for (int t = 0; t < 255; t++) {
+		fbg_clear(s, 0, 0, 0);
+
 		for (int y = 0; y < s.height; y++) {
 			for (int x = 0; x < s.width; x++) {
 				fbg_draw_pixel(s, x, y, x * 255 / s.width, y * 255 / s.height, t);
 			}
 		}
+
+		fbg_display(s);
 	}
 
-	int time_end = time(NULL);
+	int t2 = time (NULL);
+
+	for (int t = 0; t < 255; t++) {
+		fbg_clear(s, 0, 0, 0);
+
+		for (int y = 0; y < s.height; y++) {
+			for (int x = 0; x < s.width; x++) {
+				fbg_draw_pixel(s, x, y, t, t, t);
+			}
+		}
+
+		fbg_display(s);
+	}
+
+	int t3 = time(NULL);
 
 	fbg_free_screen(&s);
 	fbg_set_tty_text();
 
-	printf("%f fps\n", (float)255 / (time_end - time_start));
+	printf("fps: %f, %f\n", (float)255 / (t2 - t1), (float)255 / (t3 - t2));
 
 	return 0;
 }

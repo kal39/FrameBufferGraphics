@@ -10,7 +10,8 @@
 #define FBG_H
 
 typedef struct {
-	char *buffer;
+	char *onscreenBuffer;
+	char *offscreenBuffer;
 	int size;
 
 	int width;
@@ -40,6 +41,8 @@ typedef struct {
  *     ioctl() failed.
  *   -3:
  *     mmap() failed.
+ *   -4:
+ *     malloc() failed.
  */
 
 int fbg_set_tty_graphics();
@@ -93,6 +96,10 @@ int fbg_init_screen(fbg_Screen *screen);
 
 void fbg_free_screen(fbg_Screen *screen);
 
+void fbg_clear(fbg_Screen screen, int r, int g, int b);
+
+void fbg_display(fbg_Screen screen);
+
 /*
  * Draws pixel to screen.
  * 
@@ -120,7 +127,9 @@ int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b);
 #ifdef FBG_IMPLEMENTATION
 
 #include <unistd.h>
+#include <string.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -131,62 +140,86 @@ int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b);
 #include <linux/kd.h>
 
 int fbg_set_tty_graphics() {
-	int tty_file = open("/dev/tty", O_RDWR);
-	if(tty_file < 0)
+	int ttyFile = open("/dev/tty", O_RDWR);
+	if(ttyFile < 0)
 		return -1;
 
-	if(ioctl(tty_file, KDSETMODE, KD_GRAPHICS) < 0)
+	if(ioctl(ttyFile, KDSETMODE, KD_GRAPHICS) < 0)
 		return -2;
 
-	close(tty_file);
+	close(ttyFile);
 	return 0;
 }
 
 int fbg_set_tty_text() {
-	int tty_file = open("/dev/tty", O_RDWR);
-	if(tty_file < 0)
+	int ttyFile = open("/dev/tty", O_RDWR);
+	if(ttyFile < 0)
 		return -1;
 
-	if(ioctl(tty_file, KDSETMODE, KD_TEXT) < 0)
+	if(ioctl(ttyFile, KDSETMODE, KD_TEXT) < 0)
 		return -1;
 
-	close(tty_file);
+	close(ttyFile);
 	return 0;
 }
 
 int fbg_init_screen(fbg_Screen *screen) {
-	int fb_file = open("/dev/fb0", O_RDWR);
-	if(fb_file < 0)
+	int fbFile = open("/dev/fb0", O_RDWR);
+	if(fbFile < 0)
 		return -1;
 
-	struct fb_var_screeninfo variable_info;
-	struct fb_fix_screeninfo fixed_info;
+	struct fb_var_screeninfo variableInfo;
+	struct fb_fix_screeninfo fixedInfo;
 
-	if(ioctl(fb_file, FBIOGET_FSCREENINFO, &fixed_info) < 0)
+	if(ioctl(fbFile, FBIOGET_FSCREENINFO, &fixedInfo) < 0)
 		return -2;
 
-	if(ioctl(fb_file, FBIOGET_VSCREENINFO, &variable_info) < 0)
+	if(ioctl(fbFile, FBIOGET_VSCREENINFO, &variableInfo) < 0)
 		return -2;
 
-	screen->size = fixed_info.line_length * variable_info.yres;
-	screen->width = variable_info.xres;
-	screen->height = variable_info.yres;
-	screen->pixelBytes = variable_info.bits_per_pixel / 8;
-	screen->lineBytes = fixed_info.line_length;
-	screen->offsetRed = variable_info.red.offset / 8;
-	screen->offsetGreen = variable_info.green.offset / 8;
-	screen->offsetBlue = variable_info.blue.offset / 8;
+	screen->size = fixedInfo.line_length * variableInfo.yres;
+	screen->width = variableInfo.xres;
+	screen->height = variableInfo.yres;
+	screen->pixelBytes = variableInfo.bits_per_pixel / 8;
+	screen->lineBytes = fixedInfo.line_length;
+	screen->offsetRed = variableInfo.red.offset / 8;
+	screen->offsetGreen = variableInfo.green.offset / 8;
+	screen->offsetBlue = variableInfo.blue.offset / 8;
 
-	screen->buffer = (char*)mmap(0, screen->size, PROT_READ | PROT_WRITE, MAP_SHARED, fb_file, 0);
-	if(screen->buffer < 0)
+	screen->onscreenBuffer = mmap(0, screen->size, PROT_READ | PROT_WRITE, MAP_SHARED, fbFile, 0);
+	if(screen->onscreenBuffer < 0)
 		return -3;
+	
+	screen->offscreenBuffer = malloc(screen->size);
+	if(screen->offscreenBuffer < 0)
+		return -4;
 
-	close(fb_file);
+	close(fbFile);
 	return 0;
 }
 
 void fbg_free_screen(fbg_Screen *screen) {
-	munmap(screen->buffer, screen->size);
+	munmap(screen->onscreenBuffer, screen->size);
+	free(screen->offscreenBuffer);
+}
+
+void fbg_clear(fbg_Screen screen, int r, int g, int b) {
+	for(int i = 0; i < screen.width; i++) {
+		int offset = i * screen.pixelBytes;
+
+		screen.offscreenBuffer[offset + screen.offsetRed] = r;
+		screen.offscreenBuffer[offset + screen.offsetGreen] = g;
+		screen.offscreenBuffer[offset + screen.offsetBlue] = b;
+	}
+
+	for(int i = 1; i < screen.height; i++) {
+		int offset = i * screen.lineBytes;
+		memcpy(&screen.offscreenBuffer[offset], &screen.offscreenBuffer[0], screen.lineBytes);
+	}
+}
+
+void fbg_display(fbg_Screen screen) {
+	memcpy(screen.onscreenBuffer, screen.offscreenBuffer, screen.size);
 }
 
 int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b) {
@@ -195,9 +228,9 @@ int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b) {
 
 	int offset = x * screen.pixelBytes + y * screen.lineBytes;
 				
-	screen.buffer[offset + screen.offsetRed] = r;
-	screen.buffer[offset + screen.offsetGreen] = g;
-	screen.buffer[offset + screen.offsetBlue] = b;
+	screen.offscreenBuffer[offset + screen.offsetRed] = r;
+	screen.offscreenBuffer[offset + screen.offsetGreen] = g;
+	screen.offscreenBuffer[offset + screen.offsetBlue] = b;
 
 	return 0;
 };
