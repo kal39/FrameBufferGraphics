@@ -24,6 +24,19 @@ typedef struct {
 
 } fbg_Screen;
 
+/*---- fbg_set_tty_graphics() ------------------------------------------------//
+	DESCRIPTION
+		Set tty to graphics mode. This stops the terminal overwriting the framebuffer.
+
+	ARGUMENTS
+		(NONE)
+
+	RETURN VALUE
+		0:	sucess
+		-1:	failure
+
+*/
+
 int fbg_set_tty_graphics();
 int fbg_set_tty_text();
 
