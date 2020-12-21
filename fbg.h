@@ -120,6 +120,8 @@ void fbg_display(fbg_Screen screen);
 
 int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b);
 
+int fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, int r, int g, int b);
+
 //----------------------------------------------------------------------------//
 // implementation
 //----------------------------------------------------------------------------//
@@ -129,7 +131,7 @@ int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b);
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
-#include <pthread.h>
+#include <math.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -234,6 +236,41 @@ int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b) {
 
 	return 0;
 };
+
+void flip(int *a, int *b) {
+	int i = *a;
+	*a = *b;
+	*b = i;
+}
+
+int fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, int r, int g, int b) {
+	int steep = 0;
+
+	if(abs(x2 - x1) < abs(y2 - y1)) {
+		flip(&x1, &y1);
+		flip(&x2, &y2);
+
+		steep = 1;
+	}
+
+	if(x1 > x2) {
+		flip(&x1, &x2);
+		flip(&y1, &y2);	
+	}
+
+	float angle = (float)(y2 - y1) / (float)(x2 - x1);
+
+	float y = y1;
+
+	for(int x = x1; x < x2; x++) {
+		if(steep)
+			fbg_draw_pixel(screen, y, x, r, g, b);
+		else
+			fbg_draw_pixel(screen, x, y, r, g, b);
+
+		y += angle;
+	}
+}
 
 #endif
 #endif
