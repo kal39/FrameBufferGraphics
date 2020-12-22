@@ -9,7 +9,7 @@
 #ifndef FBG_H
 #define FBG_H
 
-typedef struct {
+typedef struct fbg_Screen {
 	char *onscreenBuffer;
 	char *offscreenBuffer;
 	int size;
@@ -24,6 +24,13 @@ typedef struct {
 	int offsetBlue;
 
 } fbg_Screen;
+
+typedef struct fbg_Color {
+	int r;
+	int g;
+	int b;
+
+} fbg_Color;
 
 /*
  * Set tty to graphics mode. This stops the terminal overwriting the
@@ -66,7 +73,7 @@ int fbg_set_tty_graphics();
 int fbg_set_tty_text();
 
 /*
- * Initlialises fbg_Screen.
+ * Initialises fbg_Screen.
  * 
  * ARGUMENTS:
  *   *screen:
@@ -96,7 +103,31 @@ int fbg_init_screen(fbg_Screen *screen);
 
 void fbg_free_screen(fbg_Screen *screen);
 
-void fbg_clear(fbg_Screen screen, int r, int g, int b);
+/*
+ * Clear screen with some color.
+ * 
+ * ARGUMENTS:
+ *   screen:
+ *     Screen to draw to.
+ *   color:
+ *     Color to clear with.
+ * 
+ * RETURN VALUE:
+ *   (NONE)
+ */
+
+void fbg_clear(fbg_Screen screen, fbg_Color color);
+
+/*
+ * Copies data from the offscreen buffer to the onscreen buffer.
+ * 
+ * ARGUMENTS:
+ *   screen:
+ *     Screen to draw to.
+ * 
+ * RETURN VALUE:
+ *   (NONE)
+ */
 
 void fbg_display(fbg_Screen screen);
 
@@ -108,7 +139,7 @@ void fbg_display(fbg_Screen screen);
  *     Screen to draw to.
  *   x, y:
  *     Position of pixel.
- *   r, g, b:
+ *   color:
  *     Color of pixel.
  * 
  * RETURN VALUE:
@@ -118,9 +149,27 @@ void fbg_display(fbg_Screen screen);
  *     Pixel was out of bounds.
  */
 
-int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b);
+int fbg_draw_pixel(fbg_Screen screen, int x, int y, fbg_Color color);
 
-int fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, int r, int g, int b);
+/*
+ * Draws line to screen.
+ * 
+ * ARGUMENTS:
+ *   screen:
+ *     Screen to draw to.
+ *   x1, y1:
+ *     Start position.
+ *  x2, y2:
+ *     End position.
+ *   color:
+ *     Color of line.
+ */
+
+void fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, fbg_Color color);
+
+void fbg_draw_triangle(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color);
+
+void fbg_draw_triangle_fill(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color);
 
 //----------------------------------------------------------------------------//
 // implementation
@@ -140,6 +189,122 @@ int fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, int r, int 
 
 #include <linux/fb.h>
 #include <linux/kd.h>
+
+//---- private functions -----------------------------------------------------//
+
+static void _flip(int *a, int *b) {
+	int i = *a;
+	*a = *b;
+	*b = i;
+}
+
+static void _draw_top_flat_triangle(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color) {
+	int min = x1;
+	if(x2 < min)
+		min = x2;
+	if(x3 < min)
+		min = x3;
+	
+	int max = x1;
+	if(x2 > max)
+		max = x2;
+	if(x3 > max)
+		max = x3;
+	
+	int width = max - min;
+
+	char *buff = malloc(width * screen.pixelBytes);
+
+	for(int i = 0; i < width; i++) {
+		int offset = i * screen.pixelBytes;
+
+		buff[offset + screen.offsetRed] = color.r;
+		buff[offset + screen.offsetGreen] = color.g;
+		buff[offset + screen.offsetBlue] = color.b;
+	}
+
+	float angle2 = (float)(x1 - x2) / (float)(y1 - y2);
+	float angle3 = (float)(x1 - x3) / (float)(y1 - y3);
+
+	float currentX2 = x1;
+	float currentX3 = x1;
+
+	float *left, *right;
+
+	if(angle3 < angle2) {
+		left = &currentX2;
+		right = &currentX3;
+	} else {
+		left = &currentX3;
+		right = &currentX2;
+	}
+
+	for(int currentY = y1; currentY > y3; currentY--) {
+		currentX2 -= angle2;
+		currentX3 -= angle3;
+		
+		int offset = (int)*left * screen.pixelBytes + currentY * screen.lineBytes;
+
+		memcpy(screen.offscreenBuffer + offset, buff, (*right - *left) * screen.pixelBytes);
+	}
+
+	free(buff);
+}
+
+static void _draw_bottom_flat_triangle(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color) {
+	int min = x1;
+	if(x2 < min)
+		min = x2;
+	if(x3 < min)
+		min = x3;
+	
+	int max = x1;
+	if(x2 > max)
+		max = x2;
+	if(x3 > max)
+		max = x3;
+	
+	int width = max - min;
+
+	char *buff = malloc(width * screen.pixelBytes);
+
+	for(int i = 0; i < width; i++) {
+		int offset = i * screen.pixelBytes;
+
+		buff[offset + screen.offsetRed] = color.r;
+		buff[offset + screen.offsetGreen] = color.g;
+		buff[offset + screen.offsetBlue] = color.b;
+	}
+
+	float angle1 = (float)(x3 - x1) / (float)(y3 - y1);
+	float angle2 = (float)(x3 - x2) / (float)(y3 - y2);
+
+	float currentX1 = x3;
+	float currentX2 = x3;
+
+	float *left, *right;
+
+	if(angle2 > angle1) {
+		left = &currentX1;
+		right = &currentX2;
+	} else {
+		left = &currentX2;
+		right = &currentX1;
+	}
+
+	for(int currentY = y3; currentY < y1; currentY++) {
+		currentX1 += angle1;
+		currentX2 += angle2;
+
+		int offset = (int)*left * screen.pixelBytes + currentY * screen.lineBytes;
+
+		memcpy(screen.offscreenBuffer + offset, buff, (*right - *left) * screen.pixelBytes);
+	}
+
+	free(buff);
+}
+
+//---- public functions ------------------------------------------------------//
 
 int fbg_set_tty_graphics() {
 	int ttyFile = open("/dev/tty", O_RDWR);
@@ -193,7 +358,7 @@ int fbg_init_screen(fbg_Screen *screen) {
 		return -3;
 	
 	screen->offscreenBuffer = malloc(screen->size);
-	if(screen->offscreenBuffer < 0)
+	if(screen->offscreenBuffer == NULL)
 		return -4;
 
 	close(fbFile);
@@ -205,15 +370,17 @@ void fbg_free_screen(fbg_Screen *screen) {
 	free(screen->offscreenBuffer);
 }
 
-void fbg_clear(fbg_Screen screen, int r, int g, int b) {
+void fbg_clear(fbg_Screen screen, fbg_Color color) {
+	// draw top line
 	for(int i = 0; i < screen.width; i++) {
 		int offset = i * screen.pixelBytes;
 
-		screen.offscreenBuffer[offset + screen.offsetRed] = r;
-		screen.offscreenBuffer[offset + screen.offsetGreen] = g;
-		screen.offscreenBuffer[offset + screen.offsetBlue] = b;
+		screen.offscreenBuffer[offset + screen.offsetRed] = color.r;
+		screen.offscreenBuffer[offset + screen.offsetGreen] = color.g;
+		screen.offscreenBuffer[offset + screen.offsetBlue] = color.b;
 	}
 
+	// copy the line down (much faster the drawing individual pixels)
 	for(int i = 1; i < screen.height; i++) {
 		int offset = i * screen.lineBytes;
 		memcpy(&screen.offscreenBuffer[offset], &screen.offscreenBuffer[0], screen.lineBytes);
@@ -224,52 +391,89 @@ void fbg_display(fbg_Screen screen) {
 	memcpy(screen.onscreenBuffer, screen.offscreenBuffer, screen.size);
 }
 
-int fbg_draw_pixel(fbg_Screen screen, int x, int y, int r, int g, int b) {
+int fbg_draw_pixel(fbg_Screen screen, int x, int y, fbg_Color color) {
 	if(x < 0 || x > screen.width || y < 0 || y > screen.height)
 		return -1;
 
 	int offset = x * screen.pixelBytes + y * screen.lineBytes;
 				
-	screen.offscreenBuffer[offset + screen.offsetRed] = r;
-	screen.offscreenBuffer[offset + screen.offsetGreen] = g;
-	screen.offscreenBuffer[offset + screen.offsetBlue] = b;
+	screen.offscreenBuffer[offset + screen.offsetRed] = color.r;
+	screen.offscreenBuffer[offset + screen.offsetGreen] = color.g;
+	screen.offscreenBuffer[offset + screen.offsetBlue] = color.b;
 
 	return 0;
 };
 
-void flip(int *a, int *b) {
-	int i = *a;
-	*a = *b;
-	*b = i;
-}
-
-int fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, int r, int g, int b) {
+void fbg_draw_line(fbg_Screen screen, int x1, int y1, int x2, int y2, fbg_Color color) {
 	int steep = 0;
 
 	if(abs(x2 - x1) < abs(y2 - y1)) {
-		flip(&x1, &y1);
-		flip(&x2, &y2);
+		_flip(&x1, &y1);
+		_flip(&x2, &y2);
 
 		steep = 1;
 	}
 
 	if(x1 > x2) {
-		flip(&x1, &x2);
-		flip(&y1, &y2);	
+		_flip(&x1, &x2);
+		_flip(&y1, &y2);	
 	}
 
 	float angle = (float)(y2 - y1) / (float)(x2 - x1);
 
 	float y = y1;
 
-	for(int x = x1; x < x2; x++) {
-		if(steep)
-			fbg_draw_pixel(screen, y, x, r, g, b);
-		else
-			fbg_draw_pixel(screen, x, y, r, g, b);
-
-		y += angle;
+	if(steep) {
+		for(int x = x1; x < x2; x++) {
+			fbg_draw_pixel(screen, y, x, color);
+			y += angle;
+		}
+	} else {
+		for(int x = x1; x < x2; x++) {
+			fbg_draw_pixel(screen, x, y, color);
+			y += angle;
+		}
 	}
+}
+
+void fbg_draw_triangle(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color) {
+	fbg_draw_line(screen, x1, y1, x2, y2, color);
+	fbg_draw_line(screen, x2, y2, x3, y3, color);
+	fbg_draw_line(screen, x3, y3, x1, y1, color);
+}
+
+void fbg_draw_triangle_fill(fbg_Screen screen, int x1, int y1, int x2, int y2, int x3, int y3, fbg_Color color) {
+	// sort points by y-ascending order
+	if(y1 < y3) {
+		_flip(&x1, &x3);
+		_flip(&y1, &y3);
+	}
+	if(y1 < y2) {
+		_flip(&x1, &x2);
+		_flip(&y1, &y2);
+	}
+	if(y2 < y3) {
+		_flip(&x2, &x3);
+		_flip(&y2, &y3);
+	}
+
+	if(y1 == y2) {
+		// bottom flat
+		_draw_bottom_flat_triangle(screen, x1, y1, x2, y2, x3, y3, color);
+
+	} else if(y2 == y3) {
+		// top flat
+		_draw_top_flat_triangle(screen, x1, y1, x2, y2, x3, y3, color);
+
+	} else {
+		// split triangle into top flat and bottom flat
+		int x4 = (float)x1 + (float)(y2 - y1) / (float)(y3 - y1) * (float)(x3 - x1);
+		int y4 = y2;
+
+		_draw_top_flat_triangle(screen, x1, y1, x2, y2, x4, y4, color);
+		_draw_bottom_flat_triangle(screen, x2, y2 + 1, x4, y4 + 1, x3, y3, color);
+	}
+
 }
 
 #endif

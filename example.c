@@ -7,8 +7,9 @@
 #define FBG_IMPLEMENTATION
 #include "fbg.h"
 
+#define FRAMES 1000
+
 void cleanup_and_exit() {
-	printf("cleanup\n");
 	fbg_set_tty_text();
 	exit(0);
 }
@@ -27,41 +28,20 @@ int main (int argc, char **argv) {
 
 	int t1 = time (NULL);
 
-	for (int t = 0; t < 255; t++) {
-		fbg_clear(s, 0, 0, 0);
+	for (int t = 0; t < FRAMES; t++) {
+		fbg_clear(s, (fbg_Color){20, 20, 20});
 
+		// fbg_draw_triangle_fill(s, 100, 100, 400, 200, 100, 300, (fbg_Color){255, 0, 0});
+
+		fbg_draw_triangle_fill(s, 700, 500, 700, 600, 100, 550, (fbg_Color){0, 255, 0});
+		
 		/*
 		for (int y = 0; y < s.height; y++) {
 			for (int x = 0; x < s.width; x++) {
-				fbg_draw_pixel(s, x, y, x * 255 / s.width, y * 255 / s.height, t);
+				fbg_draw_pixel(s, x, y, (fbg_Color){x * 255 / s.width, y * 255 / s.height, t});
 			}
 		}
 		*/
-
-		int x0 = 300;
-		int y0 = 300;
-		int count = 1000;
-		int r = 200;
-
-		for(int i = 0; i < count; i++) {
-			float angle = 2 * M_PI / count * i;
-			fbg_draw_pixel(s, x0 + cos(angle) * r, y0 + sin(angle) * r, 255, 0, 0);
-			fbg_draw_line(s, x0, y0, x0 + cos(angle) * r, y0 + sin(angle) * r, 0, 255, 0);
-		}
-		
-		/*
-		fbg_draw_line(s, x0, y0, x0 + 200, y0 + 100, 255, 0, 0);
-		fbg_draw_line(s, x0, y0, x0 + 100, y0 + 200, 255, 0, 0);
-		fbg_draw_line(s, x0, y0, x0 + 100, y0 - 100, 255, 0, 0);
-		fbg_draw_line(s, x0, y0, x0 + 100, y0 - 200, 255, 0, 0);
-		fbg_draw_line(s, x0, y0, x0 - 200, y0 + 100, 0, 255, 0);
-		fbg_draw_line(s, x0, y0, x0 - 100, y0 + 200, 0, 255, 0);
-		fbg_draw_line(s, x0, y0, x0 - 100, y0 - 100, 0, 255, 0);
-		fbg_draw_line(s, x0, y0, x0 - 100, y0 - 200, 0, 255, 0);
-		*/
-
-		// fbg_draw_line(s, 100, 100, 300, 100, 255, 0, 0);
-		// fbg_draw_line(s, 100, 100, 100, 600, 255, 0, 0);
 
 		fbg_display(s);
 	}
@@ -71,7 +51,7 @@ int main (int argc, char **argv) {
 	fbg_free_screen(&s);
 	fbg_set_tty_text();
 
-	printf("fps: %f\n", (float)255 / (t2 - t1));
+	printf("fps: %f\n", (float)FRAMES / (t2 - t1));
 
 	return 0;
 }

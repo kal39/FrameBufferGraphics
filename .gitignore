@@ -1,3 +1,5 @@
 example
 gmon.out
 profile.output
+profile.dot
+profile.png
