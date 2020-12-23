@@ -7,12 +7,47 @@
 #define FBG_IMPLEMENTATION
 #include "fbg.h"
 
-#define FRAMES 1000
-
 void cleanup_and_exit() {
 	fbg_set_tty_text();
 	exit(0);
 }
+
+void test_pixel(fbg_Screen s, int frame) {
+	for (int y = 0; y < s.height; y++) {
+		for (int x = 0; x < s.width; x++) {
+			fbg_draw_pixel(s, x, y, (fbg_Color){x * 255 / s.width, y * 255 / s.height, frame});
+		}
+	}
+}
+
+#define CIRCLE_RESOLUTION 100
+#define CIRCLE_RADIUS 100
+#define CIRCLE_CENTER_X 500
+#define CIRCLE_CENTER_Y 500
+#define CIRCLE_CENTER_X_2 200
+#define CIRCLE_CENTER_Y_2 200
+
+void test_line(fbg_Screen s) {
+	for(int i = 0; i < CIRCLE_RESOLUTION; i++) {
+		float angle = 2 * M_PI / CIRCLE_RESOLUTION * i;
+		int endX = CIRCLE_CENTER_X + CIRCLE_RADIUS * cos(angle);
+		int endY = CIRCLE_CENTER_Y + CIRCLE_RADIUS * sin(angle);
+
+		fbg_draw_line(s, CIRCLE_CENTER_X, CIRCLE_CENTER_Y, endX, endY, (fbg_Color){0, 0, 255});
+	}
+}
+
+void test_triangle(fbg_Screen s) {
+
+}
+
+void test_box(fbg_Screen s) {
+	fbg_draw_box_fill(s, 100, 100, 500, 200, (fbg_Color){255, 0, 0});
+	fbg_draw_box(s, 100, 100, 500, 200, (fbg_Color){255, 255, 255});
+	
+}
+
+#define FRAMES 1000
 
 int main (int argc, char **argv) {
 	signal(SIGINT, cleanup_and_exit);
@@ -29,19 +64,9 @@ int main (int argc, char **argv) {
 	int t1 = time (NULL);
 
 	for (int t = 0; t < FRAMES; t++) {
-		fbg_clear(s, (fbg_Color){20, 20, 20});
+		fbg_clear_screen(s, (fbg_Color){20, 20, 20});
 
-		// fbg_draw_triangle_fill(s, 100, 100, 400, 200, 100, 300, (fbg_Color){255, 0, 0});
-
-		fbg_draw_triangle_fill(s, 700, 500, 700, 600, 100, 550, (fbg_Color){0, 255, 0});
-		
-		/*
-		for (int y = 0; y < s.height; y++) {
-			for (int x = 0; x < s.width; x++) {
-				fbg_draw_pixel(s, x, y, (fbg_Color){x * 255 / s.width, y * 255 / s.height, t});
-			}
-		}
-		*/
+		test_box(s);
 
 		fbg_display(s);
 	}
